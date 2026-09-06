@@ -1,0 +1,207 @@
+---
+title: "Tugas Kuliah 1 Penanganan Autokorelasi MPDW"
+output: html_document
+---
+
+## Tugas Kuliah 1 Penanganan Autokorelasi MPDW
+
+### Nazwa Zafira Rizaldiva (M0401241009)
+
+```{r}
+library(lmtest)
+library(dplyr)
+library(ggplot2)
+```
+
+```{r}
+panel_ipm <- read.csv("C:\\Users\\firaa\\Downloads\\ipm_panel_long_2010_2021.csv")
+
+provinsi_terpilih <- "DKI JAKARTA"
+
+ipm_prov <- panel_ipm %>%
+  filter(Provinsi == provinsi_terpilih, !is.na(IPM)) %>%
+  arrange(Tahun)
+
+ipm_prov
+```
+
+### Eksplorasi Data
+```{r}
+ggplot(ipm_prov, aes(x = Tahun, y = IPM)) +
+  geom_line(color = "steelblue", linewidth = 1) +
+  geom_point(color = "steelblue", size = 2) +
+  labs(title = paste("Tren IPM", provinsi_terpilih, "2010-2021"),
+       x = "Tahun", y = "IPM") +
+  theme_minimal()
+```
+
+### Model Regresi Linear Awal
+
+```{r}
+model_awal <- lm(IPM ~ Tahun, data = ipm_prov)
+summary(model_awal)
+```
+Model menghasilkan koefisien Tahun yang positif dan sangat signifikan, dengan R-squared yang tinggi. Namun, signifikansi ini belum tentu valid apabila asumsi non-autokorelasi dilanggar, sehingga perlu diuji lebih lanjut.
+
+Residual model juga diperiksa secara visual lewat plot ACF:
+```{r}
+acf(residuals(model_awal), main = "ACF Residual Model Awal")
+```
+Lag pertama pada plot ACF terlihat menonjol keluar dari garis batas signifikansi, mengindikasikan adanya autokorelasi tingkat satu (AR(1)) pada residual.
+
+### Uji Formal Autokorelasi (Durbin-Watson)
+```{r}
+dw_awal <- dwtest(model_awal)
+dw_awal
+```
+```{r}
+klasifikasi_dw <- function(dw, dL, dU) {
+  if (dw < dL) {
+    "Autokorelasi positif"
+  } else if (dw >= dL & dw <= dU) {
+    "Inconclusive (daerah keragu-raguan)"
+  } else if (dw > dU & dw <= (4 - dU)) {
+    "Tidak ada autokorelasi"
+  } else if (dw > (4 - dU) & dw <= (4 - dL)) {
+    "Inconclusive (daerah keragu-raguan)"
+  } else {
+    "Autokorelasi negatif"
+  }
+}
+
+dL <- 0.971
+dU <- 1.331
+
+status_awal <- klasifikasi_dw(as.numeric(dw_awal$statistic), dL, dU)
+status_awal
+```
+Nilai DW sebesar 0.5301 berada di bawah dL, sehingga disimpulkan terdapat autokorelasi positif pada model awal. Model ini melanggar asumsi non-autokorelasi OLS sehingga perlu diperbaiki.
+
+## Penanganan Autokorelasi
+### Metode Cochrane-Orcutt
+
+```{r}
+cochrane_orcutt <- function(formula_model, data, max_iter = 100, toleransi = 1e-6) {
+  n <- nrow(data)
+  riwayat_rho <- numeric(0)
+  rho <- 0
+
+  repeat {
+    y <- data$IPM
+    x <- data$Tahun
+
+    y_star <- y[-1] - rho * y[-n]
+    x_star <- x[-1] - rho * x[-n]
+    model_star <- lm(y_star ~ x_star)
+
+    e <- residuals(model_star)
+    # estimasi rho lewat regresi e_t terhadap e_(t-1) tanpa intercept
+    model_rho <- lm(e[-1] ~ e[-length(e)] - 1)
+    rho_baru <- unname(coef(model_rho)[1])
+
+    riwayat_rho <- c(riwayat_rho, rho_baru)
+
+    if (abs(rho_baru - rho) < toleransi) {
+      rho <- rho_baru
+      break
+    }
+    rho <- rho_baru
+
+    if (length(riwayat_rho) >= max_iter) break
+  }
+
+  y_final <- data$IPM[-1] - rho * data$IPM[-n]
+  x_final <- data$Tahun[-1] - rho * data$Tahun[-n]
+  model_final <- lm(y_final ~ x_final)
+
+  list(model = model_final, rho = rho, riwayat_rho = riwayat_rho)
+}
+
+hasil_co <- cochrane_orcutt(IPM ~ Tahun, data = ipm_prov)
+
+data.frame(
+  Iterasi = seq_along(hasil_co$riwayat_rho),
+  Rho = hasil_co$riwayat_rho
+) %>% head(10)
+```
+```{r}
+cat("Rho konvergen pada iterasi ke-", length(hasil_co$riwayat_rho),
+    "dengan nilai rho =", round(hasil_co$rho, 4), "\n")
+```
+```{r}
+summary(hasil_co$model)
+```
+```{r}
+dw_co <- dwtest(hasil_co$model)
+dw_co
+```
+```{r}
+status_co <- klasifikasi_dw(as.numeric(dw_co$statistic), dL, dU)
+status_co
+```
+Nilai DW setelah koreksi Cochrane-Orcutt naik menjadi 0.9849, tetapi nilai ini masih berada di antara dL dan dU, sehingga metode ini belum bisa dikatakan berhasil sepenuhnya menghilangkan autokorelasi.
+
+### Metode Hildreth-Lu
+```{r}
+transformasi_hl <- function(rho, data) {
+  n <- nrow(data)
+  y_star <- data$IPM[-1] - rho * data$IPM[-n]
+  x_star <- data$Tahun[-1] - rho * data$Tahun[-n]
+  lm(y_star ~ x_star)
+}
+
+sse_hl <- function(rho, data) {
+  deviance(transformasi_hl(rho, data))
+}
+
+optimasi_rho <- optimize(sse_hl, interval = c(0.01, 0.99), data = ipm_prov)
+rho_hl <- optimasi_rho$minimum
+
+cat("Rho optimal (Hildreth-Lu):", round(rho_hl, 4),
+    "| SSE minimum:", round(optimasi_rho$objective, 4), "\n")
+```
+```{r}
+grid_rho <- seq(0.01, 0.99, by = 0.05)
+grid_sse <- sapply(grid_rho, sse_hl, data = ipm_prov)
+
+df_grid <- data.frame(rho = grid_rho, SSE = grid_sse)
+
+ggplot(df_grid, aes(x = rho, y = SSE)) +
+  geom_line(color = "darkorange") +
+  geom_point(color = "darkorange") +
+  geom_vline(xintercept = rho_hl, linetype = "dashed", color = "red") +
+  labs(title = "Kurva Pencarian Rho Optimal (Hildreth-Lu)",
+       x = expression(rho), y = "SSE") +
+  theme_minimal()
+```
+```{r}
+model_hl <- transformasi_hl(rho_hl, ipm_prov)
+summary(model_hl)
+```
+```{r}
+dw_hl <- dwtest(model_hl)
+dw_hl
+```
+```{r}
+status_hl <- klasifikasi_dw(as.numeric(dw_hl$statistic), dL, dU)
+status_hl
+```
+Nilai DW setelah koreksi Hildreth-Lu menjadi 1.8981, yaitu berada di antara dU dan (4-dU), sehingga dapat disimpulkan autokorelasi sudah tidak terdeteksi lagi pada model ini.
+
+### Perbandingan Ketiga Model
+```{r}
+tabel_perbandingan <- data.frame(
+  Tahap = c("Model Awal (OLS)", "Cochrane-Orcutt", "Hildreth-Lu"),
+  Rho = c(NA, round(hasil_co$rho, 4), round(rho_hl, 4)),
+  DW = round(c(as.numeric(dw_awal$statistic),
+               as.numeric(dw_co$statistic),
+               as.numeric(dw_hl$statistic)), 4),
+  Status = c(status_awal, status_co, status_hl)
+)
+
+tabel_perbandingan
+```
+
+### Kesimpulan
+Model regresi awal antara Tahun dan IPM Provinsi DKI Jakarta terbukti mengandung autokorelasi positif (DW = 0.5301, di bawah dL = 0.971). Metode Cochrane-Orcutt menaikkan nilai DW menjadi 0.9849, namun nilai tersebut masih berada di daerah inconclusive sehingga belum dapat dipastikan autokorelasinya sudah hilang. Metode Hildreth-Lu berhasil menaikkan DW menjadi 1.8981, yang berada pada rentang tidak ada autokorelasi, sehingga untuk kasus Provinsi DKI Jakarta, metode Hildreth-Lu lebih efektif dalam mengatasi masalah autokorelasi dibanding Cochrane-Orcutt. Meski demikian, keberhasilan ini disertai konsekuensi berupa hilangnya signifikansi statistik pada koefisien kemiringan model, sehingga pemilihan metode akhir sebaiknya juga mempertimbangkan trade-off antara bebas autokorelasi dan interpretabilitas model.
+

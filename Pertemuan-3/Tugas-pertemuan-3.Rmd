@@ -1,1 +1,194 @@
+## Tugas Pertemuan 3 MPDW
 
+### Nazwa Zafira Rizaldiva (M0401241009)
+
+### Persiapkan Data
+
+```{r}
+library(dLagM)
+library(lmtest)
+library(ggplot2)
+library(knitr)
+library(dynlm)
+library(car)
+library(MLmetrics)
+```
+
+```{r}
+data <- read.csv("NewDelhi_Air_quality.csv")
+data <- data[order(data$ts), ]   # urutkan berdasarkan waktu
+head(data)
+```
+
+### Variabel Independen (X)
+
+```{r}
+cor(data[, c("CO", "no2", "o3", "pm10", "pm25", "so2")], data$AQI)
+```
+
+**O3 (ozon)** memiliki korelasi paling kuat dengan AQI (mendekati 1), sehingga O3 dipilih sebagai **variabel independen (X)** dan AQI sebagai **variabel dependen (Y)**
+
+```{r}
+Y <- data$AQI
+X <- data$o3
+
+plot.ts(Y, main = "AQI", ylab = "AQI")
+plot.ts(X, main = "O3", ylab = "O3")
+```
+### Split data train/test
+```{r}
+n       <- length(Y)
+n_test  <- 12
+n_train <- n - n_test
+
+Y_train <- Y[1:n_train]; X_train <- X[1:n_train]
+Y_test  <- Y[(n_train+1):n]; X_test <- X[(n_train+1):n]
+```
+
+### Fungsi MAPE
+```{r}
+mape <- function(actual, pred) mean(abs((actual - pred)/actual)) * 100
+```
+
+### Model Koyck
+```{r}
+koyck <- koyckDlm(x = X_train, y = Y_train)
+summary(koyck$model)
+```
+```{r}
+# Lag optimum Koyck
+lambda <- coef(koyck$model)[2]
+mean_lag_koyck <- lambda / (1 - lambda)
+mean_lag_koyck
+```
+```{r}
+# Uji Asumsi
+bgtest(koyck$model)     # autokorelasi
+bptest(koyck$model)     # heteroskedastisitas
+shapiro.test(residuals(koyck$model))  # normalitas
+```
+```{r}
+# Forecast ke data test
+pred_koyck <- numeric(n_test)
+y_prev <- tail(Y_train, 1)
+b <- coef(koyck$model)
+for (i in 1:n_test) {
+  pred_koyck[i] <- b[1] + b[2]*y_prev + b[3]*X_test[i]
+  y_prev <- pred_koyck[i]
+}
+
+mape_koyck <- mape(Y_test, pred_koyck)
+
+n_koyck   <- length(residuals(koyck$model))
+k_koyck   <- length(coef(koyck$model))
+rss_koyck <- sum(residuals(koyck$model)^2)
+aic_koyck <- n_koyck * log(rss_koyck / n_koyck) + 2 * (k_koyck + 1)
+dev_koyck <- rss_koyck
+
+mape_koyck; dev_koyck; aic_koyck
+```
+### Model DLM
+```{r}
+# lag q optimum
+q_try <- 1:8
+aic_q <- sapply(q_try, function(q) AIC(dlm(x = X_train, y = Y_train, q = q)$model))
+data.frame(q = q_try, AIC = aic_q)
+
+q_opt <- q_try[which.min(aic_q)]
+q_opt
+```
+
+```{r}
+dlm_model <- dlm(x = X_train, y = Y_train, q = q_opt)
+summary(dlm_model$model)
+```
+```{r}
+# Uji Asumsi
+bgtest(dlm_model$model)
+bptest(dlm_model$model)
+shapiro.test(residuals(dlm_model$model))
+```
+```{r}
+# Forecast ke data test
+b <- coef(dlm_model$model)
+X_all <- c(X_train, X_test)
+pred_dlm <- sapply((n_train+1):n, function(t) {
+  sum(b * c(1, X_all[t - 0:q_opt]))
+})
+
+mape_dlm <- mape(Y_test, pred_dlm)
+dev_dlm  <- deviance(dlm_model$model)
+aic_dlm  <- AIC(dlm_model$model)
+
+mape_dlm; dev_dlm; aic_dlm
+```
+### Model ARDL
+```{r}
+# Cari orde (p,q) optimum
+grid <- expand.grid(p = 1:4, q = 1:4)
+grid$AIC <- mapply(function(p, q) AIC(ardlDlm(x = X_train, y = Y_train, p = p, q = q)$model),
+                    grid$p, grid$q)
+grid[order(grid$AIC), ]
+
+p_opt  <- grid$p[which.min(grid$AIC)]
+q_opt2 <- grid$q[which.min(grid$AIC)]
+c(p_opt, q_opt2)
+
+```
+
+```{r}
+ardl_model <- ardlDlm(x = X_train, y = Y_train, p = p_opt, q = q_opt2)
+summary(ardl_model$model)
+```
+```{r}
+# Uji Asumsi
+bgtest(ardl_model$model)
+bptest(ardl_model$model)
+shapiro.test(residuals(ardl_model$model))
+```
+```{r}
+# Forecast ke data test
+b <- coef(ardl_model$model)
+Y_all <- c(Y_train, rep(NA, n_test))
+for (t in (n_train+1):n) {
+  y_lag <- Y_all[t - 1:p_opt]
+  x_lag <- X_all[t - 0:q_opt2]
+  Y_all[t] <- sum(b * c(1, y_lag, x_lag))
+}
+pred_ardl <- Y_all[(n_train+1):n]
+
+mape_ardl <- mape(Y_test, pred_ardl)
+dev_ardl  <- deviance(ardl_model$model)
+aic_ardl  <- AIC(ardl_model$model)
+
+mape_ardl; dev_ardl; aic_ardl
+```
+### Perbandingan Model
+```{r}
+hasil <- data.frame(
+  Model    = c("Koyck", "DLM", "ARDL"),
+  Lag      = c(paste0("lambda=", round(lambda,3)), paste0("q=", q_opt), paste0("p=", p_opt, ", q=", q_opt2)),
+  AIC      = round(c(aic_koyck, aic_dlm, aic_ardl), 2),
+  Deviance = round(c(dev_koyck, dev_dlm, dev_ardl), 2),
+  MAPE     = round(c(mape_koyck, mape_dlm, mape_ardl), 2)
+)
+kable(hasil)
+```
+```{r}
+barplot(hasil$MAPE, names.arg = hasil$Model, main = "Perbandingan MAPE", ylab = "MAPE (%)")
+```
+```{r}
+plot(Y_test, type = "o", col = "black", ylim = range(c(Y_test, pred_koyck, pred_dlm, pred_ardl)),
+     ylab = "AQI", xlab = "Waktu ke-", main = "Aktual vs Prediksi (Data Test)")
+lines(pred_koyck, col = "red", type = "o")
+lines(pred_dlm, col = "blue", type = "o")
+lines(pred_ardl, col = "darkgreen", type = "o")
+legend("topleft", legend = c("Aktual","Koyck","DLM","ARDL"),
+       col = c("black","red","blue","darkgreen"), lty = 1, pch = 1, cex = 0.8)
+```
+
+### Kesimpulan
+```{r}
+hasil$Model[which.min(hasil$MAPE)]
+```
+Model dengan MAPE terkecil di atas adalah model **DLM** dengan performa peramalan terbaik pada data test ini.
