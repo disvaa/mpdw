@@ -1,1 +1,424 @@
+### Tugas Praktikum Pertemuan 4
+**Nazwa Zafira Rizaldiva (M0401241009)**
 
+## Proses MA(2)
+
+```{r}
+set.seed(1234)
+wn <- rnorm(300)
+ts.plot(wn)
+```
+### Pembangkitan Proses MA(2) secara Manual
+
+```{r}
+theta1 <- 0.4
+theta2 <- 0.6
+
+ma2 <- vector(length = 300)
+
+ma2[1] <- wn[1]
+ma2[2] <- wn[2] + theta1 * wn[1]
+
+# loop untuk nilai selanjutnya
+for (i in 3:300) {
+  ma2[i] <- wn[i] + theta1 * wn[i - 1] + theta2 * wn[i - 2]
+}
+
+ma2
+```
+### Pembangkitan Proses MA(2) secara arima.sim
+```{r}
+ma2_sim <- arima.sim(list(order = c(0, 0, 2), ma = c(theta1, theta2)), n = 300)
+ma2_sim
+```
+### Karakteristik MA(2)
+**Plot Time Series**
+```{r}
+ts.plot(ma2)
+```
+Berdasarkan plot time series data MA(2) yang dibangkitkan, terlihat bahwa data yang dibangkitkan stasioner dalam rataan.
+
+**Plot ACF**
+```{r}
+acf(ma2,lag.max = 20)
+```
+Berdasarkan plot ACF, terlihat bahwa pola cuts off berada di lag 2.
+
+**Plot PACF**
+```{r}
+pacf(ma2)
+```
+Berdasarkan plot PACF tersebut, terlihat bahwa plot cenderung tails off dan membentuk gelombang sinus teredam.
+
+**Plot EACF**
+```{r}
+TSA::eacf(ma2)
+```
+Berdasarkan plot EACF, terlihat bahwa segitiga nol berada pada ordo AR(0) dan ordo MA(2).
+
+### Scatterplot Antar Lag
+**Korelasi antara Yt dengan Yt-1**
+
+```{r}
+#Yt
+yt_ma2 <- ma2[-1]
+yt_ma2
+```
+```{r}
+#Yt-1
+yt_1_ma2 <- ma2[-300]
+yt_1_ma2
+```
+```{r}
+plot(y=yt_ma2,x=yt_1_ma2, main = "Yt vs Yt-1")
+```
+```{r}
+cor(yt_ma2,yt_1_ma2)
+```
+**Korelasi antara Yt dengan Yt-2**
+```{r}
+#Yt
+yt_a <- ma2[-c(1, 2)]
+yt_a
+```
+```{r}
+#Yt-2
+yt_2 <- ma2[-c(299, 300)]
+yt_2
+```
+```{r}
+plot(y = yt_a, x = yt_2, main = "Yt vs Yt-2")
+```
+```{r}
+cor(yt_a, yt_2)
+```
+
+**Korelasi antara Yt dengan Yt-3**
+
+```{r}
+yt_b <- ma2[-c(1, 2, 3)]
+yt_b
+```
+```{r}
+yt_3 <- ma2[-c(298, 299, 300)]
+yt_3
+```
+```{r}
+plot(y = yt_b, x = yt_3, main = "Yt vs Yt-3")
+```
+```{r}
+cor(yt_b, yt_3)
+```
+
+### Autokorelasi
+Untuk proses MA(2), autokorelasi teoritisnya:
+
+$$
+\rho_1 = \frac{\theta_1 + \theta_1\theta_2}{1+\theta_1^2+\theta_2^2}, \quad
+\rho_2 = \frac{\theta_2}{1+\theta_1^2+\theta_2^2}, \quad
+\rho_k = 0 \text{ untuk } k \geq 3
+$$
+Dengan $\theta_1 = 0.4$ dan $\theta_2 = 0.6$:
+
+```{r}
+rho1_teori <- (theta1 + theta1 * theta2) / (1 + theta1^2 + theta2^2)
+rho2_teori <- theta2 / (1 + theta1^2 + theta2^2)
+
+rho1_teori
+rho2_teori
+```
+Nilai korelasi dari data bangkitan pada lag 1, 2, dan 3 berturut-turut sebesar 0.5282, 0.4356, dan 0.0854, mendekati nilai korelasi teoritisnya yaitu 0.4211, 0.3947, dan 0. Hal ini menunjukkan bahwa hasil pembangkitan data sesuai dengan teori proses MA(2), di mana korelasi hanya signifikan hingga lag ke-2 dan mendekati nol untuk lag ke-3 dan seterusnya.
+
+
+## Proses AR(2)
+
+```{r}
+set.seed(1234)
+wn <- rnorm(300)
+```
+
+### Pembangkitan Proses AR(2) secara Manual
+```{r}
+phi1 <- 0.5
+phi2 <- 0.2
+
+n <- length(wn)
+ar2 <- vector(length = n)
+
+# dua nilai awal
+ar2[1] <- wn[1]
+ar2[2] <- wn[2] + phi1 * ar2[1]
+
+# loop untuk data selanjutnya
+for (i in 3:n) {
+  ar2[i] <- wn[i] + phi1 * ar2[i - 1] + phi2 * ar2[i - 2]
+}
+
+ar2
+```
+
+### Pembangkitan Proses AR(2) dengan arima.sim()
+
+```{r}
+ar2_sim <- arima.sim(list(order = c(2, 0, 0), ar = c(phi1, phi2)), n = 300)
+ar2_sim
+```
+
+### Karakteristik AR(2)
+**Plot Time Series**
+
+```{r}
+ts.plot(ar2)
+```
+
+Berdasarkan plot time series, terlihat bahwa data cenderung stasioner dalam rataan.
+
+**Plot ACF**
+```{r}
+acf(ar2)
+```
+
+Berdasarkan plot ACF tersebut, terlihat bahwa plot ACF cenderung tails off dan membentuk pola gelombang sinus.
+
+**Plot PACF**
+```{r}
+pacf(ar2)
+```
+
+Berdasarkan plot PACF tersebut, terlihat bahwa plot PACF cuts off pada lag ke-2.
+
+**Plot EACF**
+```{r}
+TSA::eacf(ar2)
+```
+
+Berdasarkan pada plot EACF, terlihat bahwa segitiga nol berada pada ordo AR(2) dan ordo MA(0).
+
+### Scatterplot Antar Lag
+**Korelasi antara Yt dengan Yt-1**
+
+```{r}
+#Yt
+yt_ar2 <- ar2[-1]
+yt_ar2
+```
+```{r}
+#Yt-1
+yt_1_ar2 <- ar2[-300]
+yt_1_ar2
+```
+
+```{r}
+plot(y = yt_ar2, x = yt_1_ar2, main = "Yt vs Yt-1")
+```
+
+```{r}
+cor(yt_ar2, yt_1_ar2)
+```
+
+**Korelasi antara Yt dengan Yt-2**
+
+```{r}
+#Yt
+yt_a_ar2 <- ar2[-c(1, 2)]
+yt_a_ar2
+```
+
+```{r}
+#Yt-2
+yt_2_ar2 <- ar2[-c(299, 300)]
+yt_2_ar2
+```
+
+```{r}
+plot(y = yt_a_ar2, x = yt_2_ar2, main = "Yt vs Yt-2")
+```
+
+```{r}
+cor(yt_a_ar2, yt_2_ar2)
+```
+
+**Korelasi antara Yt dan Yt-3
+
+```{r}
+yt_b_ar2 <- ar2[-c(1, 2, 3)]
+yt_b_ar2
+```
+
+```{r}
+yt_3_ar2 <- ar2[-c(298, 299, 300)]
+yt_3_ar2
+```
+
+```{r}
+plot(y = yt_b_ar2, x = yt_3_ar2, main = "Yt vs Yt-3")
+```
+
+```{r}
+cor(yt_b_ar2, yt_3_ar2)
+```
+
+### Autokorelasi
+
+Untuk proses AR(2), autokorelasi teoritis dihitung menggunakan persamaan Yule-Walker:
+
+$$
+\rho_1 = \frac{\phi_1}{1-\phi_2}, \qquad
+\rho_k = \phi_1 \rho_{k-1} + \phi_2 \rho_{k-2} \ \text{ untuk } k \geq 2
+$$
+
+Dengan $\phi_1 = 0.5$ dan $\phi_2 = 0.2$:
+
+```{r}
+rho1_teori <- phi1 / (1 - phi2)
+rho2_teori <- phi1 * rho1_teori + phi2
+rho3_teori <- phi1 * rho2_teori + phi2 * rho1_teori
+
+rho1_teori
+rho2_teori
+rho3_teori
+```
+Nilai korelasi dari data bangkitan pada lag 1, 2, dan 3 berturut-turut sebesar 0.7182, 0.5890, dan 0.4630, mendekati nilai korelasi teoritisnya yaitu 0.625, 0.5125, dan 0.38125. Hal ini menunjukkan bahwa hasil pembangkitan data sesuai dengan teori proses AR(2). Autokorelasi tidak langsung terputus seperti pada MA(2), melainkan menurun secara bertahap seiring bertambahnya lag.
+
+
+## Proses ARMA(2,2)
+
+```{r}
+set.seed(1234)
+wn <- rnorm(300)
+```
+
+### Pembangkitan Proses MA(2) secara Manual
+
+```{r}
+phi1 <- 0.5
+phi2 <- 0.2
+theta1 <- 0.4
+theta2 <- 0.6
+
+n <- length(wn)
+arma22 <- vector(length = n)
+
+# dua nilai awal
+arma22[1] <- wn[1]
+arma22[2] <- phi1 * arma22[1] + wn[2] + theta1 * wn[1]
+
+# loop untuk data selanjutnya
+for (i in 3:n) {
+  arma22[i] <- phi1 * arma22[i - 1] + phi2 * arma22[i - 2] +
+    wn[i] + theta1 * wn[i - 1] + theta2 * wn[i - 2]
+}
+
+arma22
+```
+### Pembangkitan ARMA(2,2) dengan arima.sim()
+
+```{r}
+arma22_sim <- arima.sim(
+  list(order = c(2, 0, 2), ar = c(phi1, phi2), ma = c(theta1, theta2)),
+  n = 300
+)
+arma22_sim
+```
+
+### Karakteristik Proses ARMA(2,2)
+**Plot Time Series**
+```{r}
+ts.plot(arma22)
+```
+
+Berdasarkan plot time series tersebut, terlihat bahwa data berfluktuasi di sekitar rataan yang konstan, sehingga data cenderung stasioner dalam rataan.
+
+**Plot ACF**
+
+```{r}
+acf(arma22)
+```
+
+Berdasarkan plot ACF, terlihat bahwa nilai ACF menurun secara bertahap dari lag 1 hingga sekitar lag 8-9 sebelum masuk ke batas tidak signifikan, menunjukkan pola tails off.
+
+**Plot PACF**
+
+```{r}
+pacf(arma22)
+```
+
+Berdasarkan plot PACF, terlihat nilai signifikan pada lag 1, lalu menurun dan sempat menunjukkan nilai negatif pada lag 3, menunjukkan pola tails off.
+
+**Plot EACF**
+
+```{r}
+TSA::eacf(arma22)
+```
+
+Berdasarkan plot EACF, terlihat bahwa segitiga nol berada pada ordo AR(2) dan ordo MA(2).
+
+
+### Scatterplot Antar Lag
+**Korelasi antara Yt dengan Yt-1**
+
+```{r}
+#Yt
+yt_arma <- arma22[-1]
+yt_arma
+```
+```{r}
+#Yt-1
+yt_1_arma <- arma22[-300]
+yt_1_arma
+```
+```{r}
+plot(y = yt_arma, x = yt_1_arma, main = "Yt vs Yt-1")
+```
+
+```{r}
+cor(yt_arma, yt_1_arma)
+```
+
+**Korelasi antara Yt dengan Yt-2**
+```{r}
+yt_a_arma <- arma22[-c(1, 2)]
+yt_a_arma
+```
+```{r}
+yt_2_arma <- arma22[-c(299, 300)]
+yt_2_arma
+```
+```{r}
+plot(y = yt_a_arma, x = yt_2_arma, main = "Yt vs Yt-2")
+```
+
+```{r}
+cor(yt_a_arma, yt_2_arma)
+```
+
+**Korelasi antara Yt dengan Yt-3**
+
+```{r}
+#Yt
+yt_b_arma <- arma22[-c(1, 2, 3)]
+yt_b_arma
+```
+
+```{r}
+#Yt-3
+yt_3_arma <- arma22[-c(298, 299, 300)]
+yt_3_arma
+```
+```{r}
+plot(y = yt_b_arma, x = yt_3_arma, main = "Yt vs Yt-3")
+```
+
+```{r}
+cor(yt_b_arma, yt_3_arma)
+```
+
+### Autokorelasi
+
+Menggunakan fungsi bawaan R `ARMAacf()`untuk mencari autokorelasi dari data secara teoritis.
+
+```{r}
+rho_teori <- ARMAacf(ar = c(phi1, phi2), ma = c(theta1, theta2), lag.max = 3)
+rho_teori
+```
+Nilai korelasi dari data bangkitan pada lag 1, 2, dan 3 berturut-turut sebesar 0.8955, 0.7900, dan 0.6195,hal ini mendekati nilai korelasi teoritisnya yaitu 0.8592, 0.7492, dan 0.5464. Hal ini menunjukkan bahwa hasil pembangkitan data sesuai dengan teori proses ARMA(2,2), yakni autokorelasi tidak langsung cuts off seperti pada MA(2), melainkan menurun secara bertahap seiring bertambahnya lag karena adanya komponen AR di dalam model.
