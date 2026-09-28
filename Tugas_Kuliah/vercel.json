@@ -1,0 +1,29 @@
+{
+  "cleanUrls": true,
+  "rewrites": [
+    {
+      "source": "/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW.html",
+      "destination": "/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW"
+    },
+    {
+      "source": "/Tugas-Kuliah-2-MPDW.html",
+      "destination": "/Tugas-Kuliah-2-MPDW"
+    },
+    {
+      "source": "/tugas-1",
+      "destination": "/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW"
+    },
+    {
+      "source": "/tugas-2",
+      "destination": "/Tugas-Kuliah-2-MPDW"
+    },
+    {
+      "source": "/tugas1",
+      "destination": "/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW"
+    },
+    {
+      "source": "/tugas2",
+      "destination": "/Tugas-Kuliah-2-MPDW"
+    }
+  ]
+}

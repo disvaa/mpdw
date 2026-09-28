@@ -4,27 +4,35 @@
   "rewrites": [
     {
       "source": "/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW.html",
-      "destination": "/Tugas_Kuliah/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW.html"
+      "destination": "/Tugas_Kuliah/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW"
     },
     {
       "source": "/Tugas-Kuliah-2-MPDW.html",
-      "destination": "/Tugas_Kuliah/Tugas-Kuliah-2-MPDW.html"
+      "destination": "/Tugas_Kuliah/Tugas-Kuliah-2-MPDW"
+    },
+    {
+      "source": "/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW",
+      "destination": "/Tugas_Kuliah/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW"
+    },
+    {
+      "source": "/Tugas-Kuliah-2-MPDW",
+      "destination": "/Tugas_Kuliah/Tugas-Kuliah-2-MPDW"
     },
     {
       "source": "/tugas-1",
-      "destination": "/Tugas_Kuliah/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW.html"
+      "destination": "/Tugas_Kuliah/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW"
     },
     {
       "source": "/tugas-2",
-      "destination": "/Tugas_Kuliah/Tugas-Kuliah-2-MPDW.html"
+      "destination": "/Tugas_Kuliah/Tugas-Kuliah-2-MPDW"
     },
     {
       "source": "/tugas1",
-      "destination": "/Tugas_Kuliah/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW.html"
+      "destination": "/Tugas_Kuliah/Tugas-Kuliah-1-Penanganan-Autokorelasi-MPDW"
     },
     {
       "source": "/tugas2",
-      "destination": "/Tugas_Kuliah/Tugas-Kuliah-2-MPDW.html"
+      "destination": "/Tugas_Kuliah/Tugas-Kuliah-2-MPDW"
     },
     {
       "source": "/tugas",
