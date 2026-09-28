@@ -1,1 +1,415 @@
+# Tugas Kuliah 2 MPDW
 
+**Nazwa Zafira Rizaldiva (M0401241009)**
+
+### Library
+
+```{r}
+library(readxl)
+library(dLagM)
+library(lmtest)
+library(ggplot2)
+library(knitr)
+library(dynlm)
+library(car)
+library(MLmetrics)
+library(tseries)
+library(forecast)
+library(e1071)
+```
+
+### Data
+
+```{r}
+data <- read_excel("Data_Harian_2022_2024.xlsx")
+head(data)
+```
+
+Dipilih 1 peubah bebas (X) yaitu **PC (Curah Hujan)** dan peubah terikat (Y) yaitu **TMA (Tinggi Muka Air)**.
+
+```{r}
+Y <- data$TMA
+X <- data$PC
+Date <- data$Date
+```
+
+## 1. Eksplorasi Data
+
+### 1.1 Statistik Deskriptif
+
+```{r}
+summary_stat <- data.frame(
+  Variabel = c("TMA (cm)", "PC (mm)"),
+  Min      = c(min(Y, na.rm = TRUE), min(X, na.rm = TRUE)),
+  Mean     = c(mean(Y, na.rm = TRUE), mean(X, na.rm = TRUE)),
+  Median   = c(median(Y, na.rm = TRUE), median(X, na.rm = TRUE)),
+  Max      = c(max(Y, na.rm = TRUE), max(X, na.rm = TRUE)),
+  SD       = c(sd(Y, na.rm = TRUE), sd(X, na.rm = TRUE)),
+  Skewness = c(skewness(Y, na.rm = TRUE), skewness(X, na.rm = TRUE)),
+  Kurtosis = c(kurtosis(Y, na.rm = TRUE), kurtosis(X, na.rm = TRUE))
+)
+kable(summary_stat, digits = 3, caption = "Statistik Deskriptif Peubah TMA dan PC")
+```
+
+### 1.2 Visualisasi Deret Waktu
+
+```{r}
+# Plot deret waktu TMA
+ggplot(data, aes(x = Date, y = TMA)) +
+  geom_line(color = "blue", linewidth = 0.7) +
+  labs(title = "Deret Waktu Tinggi Muka Air (TMA) 2022-2024",
+       x = "Tanggal", y = "TMA (cm)") +
+  theme_minimal()
+```
+
+```{r}
+# Plot deret waktu Curah Hujan (PC)
+ggplot(data, aes(x = Date, y = PC)) +
+  geom_line(color = "green", linewidth = 0.6) +
+  labs(title = "Deret Waktu Curah Hujan (PC) 2022-2024",
+       x = "Tanggal", y = "Curah Hujan (mm)") +
+  theme_minimal()
+```
+
+### 1.3 Uji Stasioneritas (ADF Test)
+
+```{r}
+adf_tma <- adf.test(Y)
+adf_pc  <- adf.test(X)
+
+data.frame(
+  Variabel  = c("TMA", "PC"),
+  ADF_Stat  = c(adf_tma$statistic, adf_pc$statistic),
+  p_value   = c(adf_tma$p.value, adf_pc$p.value),
+  Keterangan = c(
+    ifelse(adf_tma$p.value < 0.05, "Stasioner (p < 0.05)", "Tidak Stasioner"),
+    ifelse(adf_pc$p.value < 0.05, "Stasioner (p < 0.05)", "Tidak Stasioner")
+  )
+)
+```
+
+### 1.4 Analisis Korelasi Silang (CCF)
+
+Fungsi korelasi silang (CCF) digunakan untuk melihat pada lag berapa curah hujan (PC) memiliki korelasi signifikan terhadap tinggi muka air (TMA):
+
+```{r}
+ccf_res <- ccf(X, Y, lag.max = 15, main = "Cross-Correlation: Curah Hujan (PC) vs TMA")
+```
+
+Berdasarkan plot CCF, terlihat korelasi positif yang signifikan pada lag 0 hingga beberapa lag sebelumnya, sehingga curah hujan masa kini dan masa lampau berpengaruh nyata terhadap tinggi muka air.
+
+## 2. Pembagian Data Latih (Train) dan Uji (Test)
+
+Sesuai proporsi data skripsi, 160 amatan terakhir digunakan sebagai data uji (test), sedangkan 936 amatan awal sebagai data latih (train):
+
+```{r}
+n       <- length(Y)
+n_test  <- 160
+n_train <- n - n_test
+
+Y_train <- Y[1:n_train]
+X_train <- X[1:n_train]
+
+Y_test  <- Y[(n_train + 1):n]
+X_test  <- X[(n_train + 1):n]
+X_all   <- c(X_train, X_test)
+
+cat("Jumlah amatan train:", n_train, "\nJumlah amatan test :", n_test, "\n")
+```
+
+### 2.1 Fungsi Evaluasi
+
+Fungsi MAPE (Mean Absolute Percentage Error) didefinisikan sebagai berikut:
+
+```{r}
+mape <- function(actual, pred) {
+  mean(abs((actual - pred) / actual), na.rm = TRUE) * 100
+}
+```
+
+## 3. Model Koyck (ARL)
+
+Model Koyck mengasumsikan bahwa koefisien lag dari peubah bebas X menurun secara eksponensial seiring bertambahnya lag.
+
+```{r}
+koyck <- koyckDlm(x = X_train, y = Y_train)
+summary(koyck$model)
+```
+
+### 3.1 Parameter dan Lag Optimum Koyck
+
+```{r}
+b_k <- coef(koyck$model)
+lambda <- b_k[2]
+beta0  <- b_k[3]
+
+# Mean lag dan Median lag
+mean_lag_koyck   <- lambda / (1 - lambda)
+median_lag_koyck <- -log(2) / log(lambda)
+
+data.frame(
+  Parameter = c("Lambda (Koefisien Y_t-1)", "Beta 0 (Koefisien X_t)", "Mean Lag", "Median Lag"),
+  Nilai     = round(c(lambda, beta0, mean_lag_koyck, median_lag_koyck), 4)
+)
+```
+
+Nilai λ = 0.6826 menunjukkan bahwa pengaruh curah hujan masa lalu berkurang secara geometrik sebesar 68.26% setiap harinya, dengan rata-rata waktu tunda (mean lag) sekitar 2.15 hari.
+
+### 3.2 Uji Diagnostik Sisaan Koyck
+
+```{r}
+bg_koyck <- bgtest(koyck$model)
+bp_koyck <- bptest(koyck$model)
+sw_koyck <- shapiro.test(residuals(koyck$model))
+
+data.frame(
+  Uji_Asumsi = c("Autokorelasi (Breusch-Godfrey)", "Heteroskedastisitas (Breusch-Pagan)", "Normalitas (Shapiro-Wilk)"),
+  Statistik  = c(bg_koyck$statistic, bp_koyck$statistic, sw_koyck$statistic),
+  p_value    = c(bg_koyck$p.value, bp_koyck$p.value, sw_koyck$p.value)
+)
+```
+
+### 3.3 Peramalan Data Uji Koyck
+
+```{r}
+pred_koyck <- numeric(n_test)
+y_prev <- tail(Y_train, 1)
+
+for (i in 1:n_test) {
+  pred_koyck[i] <- b_k[1] + b_k[2] * y_prev + b_k[3] * X_test[i]
+  y_prev <- pred_koyck[i]
+}
+
+mape_koyck <- mape(Y_test, pred_koyck)
+n_koyck   <- length(residuals(koyck$model))
+k_koyck   <- length(coef(koyck$model))
+rss_koyck <- sum(residuals(koyck$model)^2)
+aic_koyck <- n_koyck * log(rss_koyck / n_koyck) + 2 * (k_koyck + 1)
+dev_koyck <- rss_koyck
+
+cat("Koyck - MAPE Test:", round(mape_koyck, 3), "%\n")
+```
+
+```{r}
+cat("Koyck - AIC      :", round(aic_koyck, 2), "\n")
+```
+
+```{r}
+cat("Koyck - Deviance :", round(dev_koyck, 2), "\n")
+```
+
+## 4. Model Distributed Lag Model (DLM)
+
+Model DLM berhingga mengasumsikan bahwa peubah terikat Yt dipengaruhi oleh nilai peubah penjelas X pada saat ini hingga q periode sebelumnya
+
+### 4.1 Penentuan Lag q Optimum
+
+Lag q optimum dipilih berdasarkan nilai AIC terkecil dari kandidat lag q=1 hingga q=8 :
+
+```{r}
+q_try <- 1:8
+aic_q <- sapply(q_try, function(q) AIC(dlm(x = X_train, y = Y_train, q = q)$model))
+
+tabel_aic_q <- data.frame(Lag_q = q_try, AIC = aic_q)
+kable(tabel_aic_q, digits = 2, caption = "Pemilihan Lag q Optimum Model DLM")
+```
+
+```{r}
+q_opt <- q_try[which.min(aic_q)]
+cat("Lag q optimum terpilih:", q_opt, "\n")
+```
+
+### 4.2 Estimasi Model DLM Optimum
+
+```{r}
+dlm_model <- dlm(x = X_train, y = Y_train, q = q_opt)
+summary(dlm_model$model)
+```
+
+### 4.3 Uji Diagnostik Sisaan DLM
+
+```{r}
+bg_dlm <- bgtest(dlm_model$model)
+bp_dlm <- bptest(dlm_model$model)
+sw_dlm <- shapiro.test(residuals(dlm_model$model))
+
+data.frame(
+  Uji_Asumsi = c("Autokorelasi (Breusch-Godfrey)", "Heteroskedastisitas (Breusch-Pagan)", "Normalitas (Shapiro-Wilk)"),
+  Statistik  = c(bg_dlm$statistic, bp_dlm$statistic, sw_dlm$statistic),
+  p_value    = c(bg_dlm$p.value, bp_dlm$p.value, sw_dlm$p.value)
+)
+```
+
+### 4.4 Peramalan Data Uji (DLM)
+
+```{r}
+b_dlm <- coef(dlm_model$model)
+
+pred_dlm <- sapply((n_train + 1):n, function(t) {
+  sum(b_dlm * c(1, X_all[t - 0:q_opt]))
+})
+
+mape_dlm <- mape(Y_test, pred_dlm)
+dev_dlm  <- deviance(dlm_model$model)
+aic_dlm  <- AIC(dlm_model$model)
+
+cat("DLM - MAPE Test:", round(mape_dlm, 3), "%\n")
+```
+
+```{r}
+cat("DLM - AIC      :", round(aic_dlm, 2), "\n")
+```
+
+```{r}
+cat("DLM - Deviance :", round(dev_dlm, 2), "\n")
+```
+
+## 5. Model Autoregressive Distributed Lag (ARDL)
+
+Model ARDL menggabungkan struktur autoregresif dari peubah Y dengan lag berhingga dari peubah penjelas X
+
+### 5.1 Penentuan Ordo (p,q) Optimum
+
+Kombinasi ordo (p,q) dicari menggunakan grid search dengan kriteria AIC minimum:
+
+```{r}
+grid <- expand.grid(p = 1:4, q = 1:4)
+grid$AIC <- mapply(function(p, q) AIC(ardlDlm(x = X_train, y = Y_train, p = p, q = q)$model),
+                   grid$p, grid$q)
+
+grid_sorted <- grid[order(grid$AIC), ]
+head(grid_sorted, 5)
+```
+
+```{r}
+p_opt  <- grid$p[which.min(grid$AIC)]
+q_opt2 <- grid$q[which.min(grid$AIC)]
+cat("Ordo ARDL optimum terpilih: p (lag X) =", p_opt, ", q (lag Y) =", q_opt2, "\n")
+```
+
+### 5.2 Estimasi MOdel ARDL Optimum
+
+```{r}
+ardl_model <- ardlDlm(x = X_train, y = Y_train, p = p_opt, q = q_opt2)
+summary(ardl_model$model)
+```
+
+### 5.3 Uji Diagnostik Sisaan ARDL
+
+```{r}
+bg_ardl <- bgtest(ardl_model$model)
+bp_ardl <- bptest(ardl_model$model)
+sw_ardl <- shapiro.test(residuals(ardl_model$model))
+
+data.frame(
+  Uji_Asumsi = c("Autokorelasi (Breusch-Godfrey)", "Heteroskedastisitas (Breusch-Pagan)", "Normalitas (Shapiro-Wilk)"),
+  Statistik  = c(bg_ardl$statistic, bp_ardl$statistic, sw_ardl$statistic),
+  p_value    = c(bg_ardl$p.value, bp_ardl$p.value, sw_ardl$p.value)
+)
+```
+
+### 5.4 Peramalan Data Uji ARDL
+
+```{r}
+b_ardl <- coef(ardl_model$model)
+Y_all  <- c(Y_train, rep(NA, n_test))
+
+for (t in (n_train + 1):n) {
+  x_terms <- X_all[t - 0:p_opt]
+  y_terms <- Y_all[t - 1:q_opt2]
+  Y_all[t] <- sum(b_ardl * c(1, x_terms, y_terms))
+}
+
+pred_ardl <- Y_all[(n_train + 1):n]
+
+mape_ardl <- mape(Y_test, pred_ardl)
+dev_ardl  <- deviance(ardl_model$model)
+aic_ardl  <- AIC(ardl_model$model)
+
+cat("ARDL - MAPE Test:", round(mape_ardl, 3), "%\n")
+```
+
+```{r}
+cat("ARDL - AIC      :", round(aic_ardl, 2), "\n")
+```
+
+```{r}
+cat("ARDL - Deviance :", round(dev_ardl, 2), "\n")
+```
+
+## 6. Perbandingan Model
+
+Berikut adalah tabel perbandingan performa ketiga model pada kriteria AIC, Deviance, dan akurasi peramalan data uji (MAPE):
+
+```{r}
+hasil <- data.frame(
+  Model    = c("Koyck (ARL)", "DLM", "ARDL"),
+  Ordo_Lag = c(paste0("lambda = ", round(lambda, 3)),
+               paste0("q = ", q_opt),
+               paste0("p = ", p_opt, ", q = ", q_opt2)),
+  AIC      = round(c(aic_koyck, aic_dlm, aic_ardl), 2),
+  Deviance = round(c(dev_koyck, dev_dlm, dev_ardl), 2),
+  MAPE_Test= round(c(mape_koyck, mape_dlm, mape_ardl), 3)
+)
+
+kable(hasil, caption = "Tabel Perbandingan Kebaikan Model dan Akurasi Peramalan")
+```
+
+### 6.1 Visualisasi Perbandingan MAPE
+
+```{r}
+barplot(
+  hasil$MAPE_Test,
+  names.arg = hasil$Model,
+  col = c("red", "blue", "green"),
+  main = "Perbandingan Nilai MAPE Data Test (%)",
+  ylab = "MAPE (%)",
+  ylim = c(0, max(hasil$MAPE_Test) * 1.2)
+)
+text(
+  x = c(0.7, 1.9, 3.1),
+  y = hasil$MAPE_Test + 0.15,
+  labels = paste0(hasil$MAPE_Test, "%"),
+  font = 2
+)
+
+```
+
+### 6.2 Visualisasi Data Aktual vs Hasil Prediksi
+
+```{r}
+plot(
+  Y_test,
+  type = "l",
+  col = "black",
+  lwd = 2,
+  ylim = range(c(Y_test, pred_koyck, pred_dlm, pred_ardl)),
+  ylab = "Tinggi Muka Air (cm)",
+  xlab = "Periode Data Uji (Hari ke-)",
+  main = "Perbandingan Data Aktual vs Hasil Prediksi (Data Test)"
+)
+lines(pred_koyck, col = "red", lty = 2, lwd = 1.5)
+lines(pred_dlm,   col = "blue", lty = 3, lwd = 1.5)
+lines(pred_ardl,  col = "green", lty = 1, lwd = 2)
+
+legend(
+  "topleft",
+  legend = c("Aktual", "Koyck (ARL)", "DLM", "ARDL"),
+  col = c("black", "red", "blue", "green"),
+  lty = c(1, 2, 3, 1),
+  lwd = c(2, 1.5, 1.5, 2),
+  cex = 0.85
+)
+```
+
+## 7. Kesimpulan
+
+```{r}
+best_model <- hasil$Model[which.min(hasil$MAPE_Test)]
+best_mape  <- min(hasil$MAPE_Test)
+
+best_model
+best_mape
+```
+
+Berdasarkan hasil analisis pemodelan regresi deret waktu dengan peubah bebas curah hujan (PC) terhadap tinggi muka air (TMA), dapat disimpulkan model terbaik adalah Model ARDL menghasilkan performa peramalan terbaik dengan nilai MAPE data uji terkecil yaitu sebesar 2.334%, serta nilai AIC terkecil (8378.11). Pengaruh curah hujan terhadap tinggi muka air terbukti bersifat dinamis. Pada model ARDL dengan p=2 (lag curah hujan) dan q=4 (lag tinggi muka air), tinggi muka air pada suatu hari dipengaruhi secara signifikan oleh TMA hari sebelumnya serta curah hujan hari ini dan hari-hari sebelumnya.Ketiga model (Koyck, DLM, dan ARDL) menghasilkan MAPE jauh di bawah 10% (seluruhnya di kisaran 2.3% - 3.0%), yang menunjukkan bahwa model-model lag terdistribusi memiliki tingkat akurasi peramalan yang sangat tinggi untuk data TMA ini.
